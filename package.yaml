@@ -1,0 +1,20 @@
+name:                ebay-listing-scraper
+license:             BSD3
+author:              "Robert Kornacki"
+
+extra-source-files:
+- README.md
+
+dependencies:
+- base >= 4.7 && < 5
+
+library:
+  source-dirs: src
+  dependencies:
+    - bytestring
+    - scalpel-core
+    - stringsearch
+    - safe-exceptions
+    - wreq
+    - lens
+    - extra-util-func

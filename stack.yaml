@@ -1,0 +1,8 @@
+resolver: lts-10.3
+
+packages:
+  - .
+
+extra-deps:
+- git: https://github.com/robkorn/extra-util-func
+  commit: fe92bf7
