@@ -45,5 +45,5 @@ From here you have access to all the data that was scraped from the page wrapped
 
 After cloning the repository run the following command to generate documentation:
 ```
-stack haddock EbayListingScraper 
+stack haddock ebay-listing-scraper 
 ```
