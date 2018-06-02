@@ -103,7 +103,7 @@ scrapeCondition webpage = scrapeStringLike webpage (text conditionSelector)
 
 -- | Scrapes price from Ebay Listing webpage html.
 scrapePrice :: Webpage -> Maybe Float
-scrapePrice webpage = extractCurrency $ priceScrape usPriceSelector <|> priceScrape cadPriceSelector
+scrapePrice webpage = extractCurrency $ fromMaybe "" $ priceScrape usPriceSelector <|> priceScrape cadPriceSelector
   where priceScrape sel = scrapeStringLike webpage (text sel)
         usPriceSelector = "div" @: ["id" @= "prcIsumConv"]
         cadPriceSelector = "span" @: ["itemprop" @= "price"]
@@ -138,7 +138,7 @@ scrapeShipping lID isAmerican zipCode = do
     where shipScrape wp sel = scrapeStringLike wp (text sel)
           usShippingSelector = "span" @: ["id" @= "convetedPriceId"]
           cadShippingSelector = "span" @: ["id" @= "fshippingCost"]
-          getShipping t = if null (BSLS.indices "FREE" t) then extractCurrency (Just t) else Just 0.00
+          getShipping t = if null (BSLS.indices "FREE" t) then extractCurrency t else Just 0.00
           url = BSL.concat ["http://www.ebay",domain,"/itm/getrates?item=",lID,"&country=",country,"&cb=&co=0", "&zipCode=", zipCode]
           domain = if isAmerican then ".com" else ".ca"
           country = if isAmerican then "1" else "2"
