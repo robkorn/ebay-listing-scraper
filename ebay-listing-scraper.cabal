@@ -2,10 +2,10 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 7407fd1ccde0ba067a4092361ccf228c33022db37ae7222c5c5acef7918e75e9
+-- hash: fabee1280673c31ee0bf8cad335ad8d17007da447071370e005e1c243e98f147
 
 name:           ebay-listing-scraper
-version:        0.0.0
+version:        0.1.0
 author:         Robert Kornacki
 license:        BSD3
 build-type:     Simple

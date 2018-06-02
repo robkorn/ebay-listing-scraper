@@ -1,5 +1,6 @@
 name:                ebay-listing-scraper
 license:             BSD3
+version:             0.1.0
 author:              "Robert Kornacki"
 
 extra-source-files:
