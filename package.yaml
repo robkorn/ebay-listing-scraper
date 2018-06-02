@@ -18,4 +18,4 @@ library:
     - safe-exceptions
     - wreq
     - lens
-    - extra-util-func
+    - extra-util-func == 0.1.0.0
