@@ -2,7 +2,6 @@
 
 module Ebay.Scraper.Listing where
 
-import           Text.HTML.Scalpel.Core
 import           Control.Applicative          ((<|>))
 import qualified Data.ByteString.Lazy         as BSL
 import qualified Data.ByteString.Lazy.Search  as BSLS
@@ -10,6 +9,7 @@ import           Data.ByteString.Lazy.Char8  (pack, unpack)
 import           Data.Maybe                  (fromMaybe)
 import           Extra.Util.Func             (getRequestBody, cleanupText, extractCurrency)
 import qualified Network.Wreq                 as W
+import           Text.HTML.Scalpel.Core      ((@:), (@=), Selector, scrapeStringLike, text, attr)
 
 type Webpage = BSL.ByteString
 type ListingID = BSL.ByteString
@@ -39,7 +39,7 @@ data EbListing = EbListing { title :: Maybe BSL.ByteString,
 createEbListing :: ZipCode -> URL -> IO EbListing
 createEbListing zipCode url = do
   webpage <- getRequestBody url
-  let lID = fromMaybe " " $ scrapeID webpage 
+  let lID = fromMaybe " " $ scrapeID webpage
   let price = scrapePrice webpage
   shipping <- scrapeShipping lID (isAmericanEbay url) zipCode
   description <- scrapeDescription lID
