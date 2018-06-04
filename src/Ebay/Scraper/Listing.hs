@@ -3,20 +3,20 @@
 module Ebay.Scraper.Listing where
 
 import           Control.Applicative          ((<|>))
+import           Control.Monad.Reader         (Reader, runReader, asks)
 import qualified Data.ByteString.Lazy         as BSL
 import qualified Data.ByteString.Lazy.Search  as BSLS
-import           Data.ByteString.Lazy.Char8  (pack, unpack)
-import           Data.Maybe                  (fromMaybe)
-import           Extra.Util.Func             (getRequestBody, cleanupText, extractCurrency)
+import           Data.ByteString.Lazy.Char8   (pack, unpack)
+import           Data.Maybe                   (fromMaybe)
+import           Extra.Util.Func              (getRequestBody, cleanupText, extractCurrency)
 import qualified Network.Wreq                 as W
-import           Text.HTML.Scalpel.Core      ((@:), (@=), Selector, scrapeStringLike, text, attr)
+import           Text.HTML.Scalpel.Core       ((@:), (@=), Selector, scrapeStringLike, text, attr)
 
-type Webpage = BSL.ByteString
 type ListingID = BSL.ByteString
 type URL = BSL.ByteString
 type ZipCode = BSL.ByteString
 
--- | Contains all scraped data from the Ebay Listing Page
+-- | Contains all scraped data from the Ebay Listing Page.
 data EbListing = EbListing { title :: Maybe BSL.ByteString,
                              image :: Maybe BSL.ByteString,
                              note :: Maybe BSL.ByteString,
@@ -33,121 +33,155 @@ data EbListing = EbListing { title :: Maybe BSL.ByteString,
                              isAuction :: Bool
                            } deriving (Show)
 
+-- | Contains intermediary data used for the environment for Reader.
+data ListingData = ListingData { url :: URL,
+                                 lID :: ListingID,
+                                 zipCode :: ZipCode,
+                                 listingHTML :: BSL.ByteString,
+                                 shippingHTML :: BSL.ByteString,
+                                 descriptionHTML :: BSL.ByteString
+                               } deriving (Show)
 
 
--- | Creates an 'EbListing'
+-- Creates an 'EbListing' with provided 'ZipCode'(for shipping prices) and with listing 'URL'
 createEbListing :: ZipCode -> URL -> IO EbListing
 createEbListing zipCode url = do
-  webpage <- getRequestBody url
-  let lID = fromMaybe " " $ scrapeID webpage
-  let price = scrapePrice webpage
-  shipping <- scrapeShipping lID (isAmericanEbay url) zipCode
-  description <- scrapeDescription lID
-  return EbListing { title = scrapeTitle webpage,
-                     image = scrapeImage webpage,
-                     note = scrapeNote webpage,
-                     condition = scrapeCondition webpage,
+  listingHTML <- getRequestBody url
+  let lID = fromMaybe " " $ scrapeID listingHTML
+  descriptionHTML <- getRequestBody $ BSL.concat ["http://vi.vipr.ebaydesc.com/ws/eBayISAPI.dll?ViewItemDescV4&item=", lID]
+  shippingHTML <- getRequestBody $ buildShippingURL zipCode url lID
+  let lData = ListingData { url = url,
+                            lID = lID,
+                            zipCode = zipCode,
+                            listingHTML = listingHTML,
+                            descriptionHTML = descriptionHTML,
+                            shippingHTML = cleanupText $ BSL.drop 48 $ shippingHTML}
+  return $ runReader buildEbListing lData
+
+
+-- Builds EbListing via Reader
+buildEbListing :: Reader ListingData EbListing
+buildEbListing = do
+  title <- scrapeTitle
+  image <- scrapeImage
+  note <- scrapeNote
+  condition <- scrapeCondition
+  description <- scrapeDescription
+  price <- scrapePrice
+  shipping <- scrapeShipping
+  sellerName <- scrapeSellerName
+  sellerRating <- scrapeSellerRating
+  lID <- asks lID
+  timeLeft <- scrapeTimeLeft
+  isCAD <- isCADListing
+  isAuction <- isAuctionCheck
+  return EbListing { title = title,
+                     image = image,
+                     note = note,
+                     condition = condition,
                      description = description,
                      price = price,
                      shipping = shipping,
                      totalPrice = (+) <$> price <*> shipping,
-                     sellerName = scrapeSellerName webpage,
-                     sellerRating = scrapeSellerRating webpage,
+                     sellerName = sellerName,
+                     sellerRating = sellerRating,
                      listingID = lID,
-                     timeLeft = scrapeTimeLeft webpage,
-                     isCAD = isCADListing webpage,
-                     isAuction = isAuctionCheck webpage
+                     timeLeft = timeLeft,
+                     isCAD = isCAD,
+                     isAuction = isAuction
                      }
 
--- | Returns whether the url provided is American or not.
--- Only supports ".ca" and ".com"
-isAmericanEbay :: URL -> Bool
-isAmericanEbay url = null (BSLS.indices ".ca" url)
 
--- | Verifies if the Ebay Listing is an auction.
-isAuctionCheck :: Webpage -> Bool
-isAuctionCheck webpage = case scrapeStringLike webpage (text auctionSelector) of
-  Just t -> True
-  Nothing -> False
-  where auctionSelector = "span" @: ["id" @= "qty-test"]
+
+-- | Creates the 'URL' used to obtain accurate shipping rates for the given ebay domain.
+buildShippingURL :: ZipCode -> URL -> ListingID -> URL
+buildShippingURL zipCode listingURL lID = BSL.concat ["http://www.ebay",domain,"/itm/getrates?item=",lID,"&country=",country,"&cb=&co=0","&zipCode=", zipCode]
+  where isAmerican = null (BSLS.indices ".ca" listingURL)
+        domain = if isAmerican then ".com" else ".ca"
+        country = if isAmerican then "1" else "2"
+
+-- | Scrapes ID from Ebay Listing webpage html.
+scrapeID :: BSL.ByteString -> Maybe (BSL.ByteString)
+scrapeID webpage = scrapeStringLike webpage (text listingIDSelector)
+  where listingIDSelector = "div" @: ["id" @= "descItemNumber"] :: Selector
 
 -- | Returns whether the Ebay Listing is in CAD currency.
-isCADListing :: Webpage -> Bool
-isCADListing webpage = case scrapeStringLike webpage (text conversionSelector) of
-  Just t -> False
-  Nothing -> True
+isCADListing :: Reader ListingData Bool
+isCADListing = do
+  lHTML <- asks listingHTML
+  case scrapeStringLike lHTML (text conversionSelector) of
+    Just t -> return False
+    Nothing -> return True
   where conversionSelector = "div" @: ["id" @= "prcIsumConv"]
 
+-- | Verifies if the Ebay Listing is an auction.
+isAuctionCheck :: Reader ListingData Bool
+isAuctionCheck = do
+  lHTML <- asks listingHTML
+  case scrapeStringLike lHTML (text auctionSelector) of
+    Just t -> return True
+    Nothing -> return False
+  where auctionSelector = "span" @: ["id" @= "qty-test"]
+
 -- | Scrapes title from Ebay Listing webpage html.
-scrapeTitle :: Webpage -> Maybe (BSL.ByteString)
-scrapeTitle webpage = cleanupTitle <$> scrapeStringLike webpage (text titleSelector)
+scrapeTitle :: Reader ListingData (Maybe BSL.ByteString)
+scrapeTitle = asks listingHTML >>= return . fmap cleanupTitle . flip scrapeStringLike (text titleSelector)
   where titleSelector = "h1" @: ["id" @= "itemTitle"]
         cleanupTitle = cleanupText . (\x -> if detailsInTitle x then removeDetails x else x)
         detailsInTitle t = not $ null (BSLS.indices "Details about" t)
         removeDetails = BSL.drop 15
 
 -- | Scrapes image from Ebay Listing webpage html.
-scrapeImage :: Webpage -> Maybe (BSL.ByteString)
-scrapeImage webpage = scrapeStringLike webpage (attr "src" imageSelector)
+scrapeImage :: Reader ListingData (Maybe BSL.ByteString)
+scrapeImage = asks listingHTML >>= return . flip scrapeStringLike (attr "src" imageSelector)
   where imageSelector = "img" @: ["id" @= "icImg"]
 
 -- | Scrapes note from Ebay Listing webpage html.
-scrapeNote :: Webpage -> Maybe (BSL.ByteString)
-scrapeNote webpage = scrapeStringLike webpage (text noteSelector)
+scrapeNote :: Reader ListingData (Maybe BSL.ByteString)
+scrapeNote = asks listingHTML >>= return . flip scrapeStringLike (text noteSelector)
   where noteSelector = "span" @: ["class" @= "viSNotesCnt"]
 
 -- | Scrapes condition from Ebay Listing webpage html.
-scrapeCondition :: Webpage -> Maybe (BSL.ByteString)
-scrapeCondition webpage = scrapeStringLike webpage (text conditionSelector)
+scrapeCondition :: Reader ListingData (Maybe BSL.ByteString)
+scrapeCondition = asks listingHTML >>= return . flip scrapeStringLike  (text conditionSelector)
   where conditionSelector =  "div" @: ["id" @= "vi-itm-cond"]
 
 -- | Scrapes price from Ebay Listing webpage html.
-scrapePrice :: Webpage -> Maybe Float
-scrapePrice webpage = extractCurrency $ fromMaybe "" $ priceScrape usPriceSelector <|> priceScrape cadPriceSelector
-  where priceScrape sel = scrapeStringLike webpage (text sel)
+scrapePrice :: Reader ListingData (Maybe Float)
+scrapePrice = do
+  lHTML <- asks listingHTML
+  return $ extractCurrency $ fromMaybe "" $ priceScrape usPriceSelector lHTML <|> priceScrape cadPriceSelector lHTML <|> priceScrape salePriceSelector lHTML
+  where priceScrape sel = flip scrapeStringLike (text sel)
         usPriceSelector = "div" @: ["id" @= "prcIsumConv"]
         cadPriceSelector = "span" @: ["itemprop" @= "price"]
         salePriceSelector = "span" @: ["id" @= "mm-saleDscPrc"]
 
-
 -- | Scrapes seller name from Ebay Listing webpage html.
-scrapeSellerName :: Webpage -> Maybe (BSL.ByteString)
-scrapeSellerName webpage = (BSL.drop 1) <$> scrapeStringLike webpage (text sellerNameSelector)
+scrapeSellerName :: Reader ListingData (Maybe BSL.ByteString)
+scrapeSellerName = asks listingHTML >>= return . fmap (BSL.drop 1) . flip scrapeStringLike (text sellerNameSelector)
   where sellerNameSelector = "a" @: ["id" @= "mbgLink"]
 
 -- | Scrapes seller rating from Ebay Listing webpage html.
-scrapeSellerRating :: Webpage -> Maybe (BSL.ByteString)
-scrapeSellerRating webpage = cleanupText <$> scrapeStringLike webpage (text sellerRatingSelector)
+scrapeSellerRating :: Reader ListingData (Maybe BSL.ByteString)
+scrapeSellerRating = asks listingHTML >>= return . fmap cleanupText . flip scrapeStringLike (text sellerRatingSelector)
   where sellerRatingSelector = "div" @: ["id" @= "si-fb"]
 
--- | Scrapes ID from Ebay Listing webpage html.
-scrapeID :: Webpage -> Maybe (BSL.ByteString)
-scrapeID webpage = scrapeStringLike webpage (text listingIDSelector)
-  where listingIDSelector = "div" @: ["id" @= "descItemNumber"] :: Selector
-
 -- | Scrapes time left from Ebay Listing webpage html.
-scrapeTimeLeft :: Webpage -> Maybe (BSL.ByteString)
-scrapeTimeLeft webpage = cleanupText <$> scrapeStringLike webpage (text timeLeftSelector)
+scrapeTimeLeft :: Reader ListingData (Maybe BSL.ByteString)
+scrapeTimeLeft = asks listingHTML >>= return . fmap cleanupText . flip scrapeStringLike (text timeLeftSelector)
   where timeLeftSelector = "span" @: ["id" @= "vi-cdown_timeLeft"] :: Selector
 
-scrapeShipping :: Webpage -> Bool -> ZipCode -> IO (Maybe Float)
-scrapeShipping lID isAmerican zipCode = do
-  webpage <- getRequestBody url
-  let wp = cleanupText $ BSL.drop 48 webpage
-  return $ getShipping $ fromMaybe " " $ shipScrape wp usShippingSelector <|> shipScrape wp cadShippingSelector
-    where shipScrape wp sel = scrapeStringLike wp (text sel)
+scrapeShipping :: Reader ListingData (Maybe Float)
+scrapeShipping = do
+  shipHTML <- asks shippingHTML
+  return $ getShipping $ fromMaybe " " $ shipScrape shipHTML usShippingSelector <|> shipScrape shipHTML cadShippingSelector
+    where shipScrape shipHTML sel = scrapeStringLike shipHTML (text sel)
           usShippingSelector = "span" @: ["id" @= "convetedPriceId"]
           cadShippingSelector = "span" @: ["id" @= "fshippingCost"]
           getShipping t = if null (BSLS.indices "FREE" t) then extractCurrency t else Just 0.00
-          url = BSL.concat ["http://www.ebay",domain,"/itm/getrates?item=",lID,"&country=",country,"&cb=&co=0", "&zipCode=", zipCode]
-          domain = if isAmerican then ".com" else ".ca"
-          country = if isAmerican then "1" else "2"
 
 -- | Scrapes description based on Ebay 'ListingID'.
-scrapeDescription :: ListingID -> IO (Maybe BSL.ByteString)
-scrapeDescription lID = do
-  webpage <- getRequestBody url
-  return $ cleanupText <$> scrapeStringLike webpage (text descriptionSelector)
+scrapeDescription :: Reader ListingData (Maybe BSL.ByteString)
+scrapeDescription = asks descriptionHTML >>=  return . fmap cleanupText . flip scrapeStringLike (text descriptionSelector)
     where descriptionSelector =  "div" @: ["id" @= "ds_div"]
-          url = BSL.concat ["http://vi.vipr.ebaydesc.com/ws/eBayISAPI.dll?ViewItemDescV4&item=", lID]
 
