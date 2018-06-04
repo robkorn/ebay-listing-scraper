@@ -43,7 +43,7 @@ data ListingData = ListingData { url :: URL,
                                } deriving (Show)
 
 
--- Creates an 'EbListing' with provided 'ZipCode'(for shipping prices) and with listing 'URL'
+-- | Creates an 'EbListing' with provided 'ZipCode'(for shipping prices) and with listing 'URL'
 createEbListing :: ZipCode -> URL -> IO EbListing
 createEbListing zipCode url = do
   listingHTML <- getRequestBody url
@@ -59,7 +59,7 @@ createEbListing zipCode url = do
   return $ runReader buildEbListing lData
 
 
--- Builds EbListing via Reader
+-- | Builds EbListing via Reader
 buildEbListing :: Reader ListingData EbListing
 buildEbListing = do
   title <- scrapeTitle
@@ -171,6 +171,7 @@ scrapeTimeLeft :: Reader ListingData (Maybe BSL.ByteString)
 scrapeTimeLeft = asks listingHTML >>= return . fmap cleanupText . flip scrapeStringLike (text timeLeftSelector)
   where timeLeftSelector = "span" @: ["id" @= "vi-cdown_timeLeft"] :: Selector
 
+-- | Scrapes shipping from Ebay Listing webpage html.
 scrapeShipping :: Reader ListingData (Maybe Float)
 scrapeShipping = do
   shipHTML <- asks shippingHTML
