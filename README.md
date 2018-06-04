@@ -21,7 +21,13 @@ Data Scraped Includes:
 
 ## How To Use
 
-The simplest way to use this library is to call `createEbListing` as such:
+The simplest way to use this library is to call `createEbListing`:
+```
+createEbListing :: ZipCode -> URL -> IO EbListing
+```
+
+ZipCode and URL are ByteStrings so to use it you simply:
+
 ```
 createEbListing "12345" "https://www.ebay.com/itm/12345678910"
 ```
@@ -38,7 +44,7 @@ shipping listing
 timeLeft listing
 ```
 
-From here you have access to all the data that was scraped from the page wrapped in `Maybe`. As of present everything works however in the future if it fails to scrape portions/all of the data then chances are that the ebay listing page web design has received an upgrade and the css scraping selectors will need to be updated.
+You now have access to all the data that was scraped from the page.
 
 
 ## Documentation
