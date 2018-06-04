@@ -18,4 +18,5 @@ library:
     - safe-exceptions
     - wreq
     - lens
+    - mtl
     - extra-util-func == 0.1.0.0

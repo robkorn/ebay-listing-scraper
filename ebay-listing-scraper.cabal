@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 55188c1f62be5773990b2346f6ec1c273ef61e0f22a240391619a08cc1d1b6b2
+-- hash: 902a4b13370679fc95ef54e31a3c2662bf0e19f566af403e54204dced04d32b3
 
 name:           ebay-listing-scraper
 version:        0.1.0.0
@@ -22,6 +22,7 @@ library
     , bytestring
     , extra-util-func ==0.1.0.0
     , lens
+    , mtl
     , safe-exceptions
     , scalpel-core
     , stringsearch
