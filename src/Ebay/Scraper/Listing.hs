@@ -32,7 +32,8 @@ data EbListing = EbListing { title :: Maybe BSL.ByteString,
                              isCAD :: Bool,
                              isAuction :: Bool,
                              locale :: SiteLocale,
-                             destinations :: Maybe BSL.ByteString
+                             destinations :: Maybe BSL.ByteString,
+                             itemLocation :: Maybe BSL.ByteString
                            } deriving (Show)
 
 -- | Contains intermediary data used for the environment for Reader.
@@ -84,6 +85,7 @@ buildEbListing = do
   isAuction <- isAuctionCheck
   curLocale <- asks lLocale
   dests <- scrapeDestinations
+  iLoc <- scrapeItemLocation
   return EbListing { title = title,
                      image = image,
                      note = note,
@@ -99,7 +101,8 @@ buildEbListing = do
                      isCAD = isCAD,
                      isAuction = isAuction,
                      locale = curLocale,
-                     destinations = dests
+                     destinations = dests,
+                     itemLocation = iLoc
                      }
 
 
@@ -200,7 +203,7 @@ scrapeShipping = do
           cadShippingSelector = "span" @: ["id" @= "fshippingCost"]
           getShipping t = if null (BSLS.indices "FREE" t) then extractCurrency t else Just 0.00
 
--- | Scrapes destinations the Ebay Listing ships to from webpage html.
+-- | Scrapes available destinations of the Ebay Listing from webpage html.
 scrapeDestinations :: Reader ListingData (Maybe BSL.ByteString)
 scrapeDestinations = asks listingHTML >>= return . fmap (BSL.drop 10 . cleanupText) . flip scrapeStringLike (text shipsToSelector)
   where shipsToSelector = "div" @: ["id" @= "shipsToSummary"] :: Selector
@@ -209,4 +212,10 @@ scrapeDestinations = asks listingHTML >>= return . fmap (BSL.drop 10 . cleanupTe
 scrapeDescription :: Reader ListingData (Maybe BSL.ByteString)
 scrapeDescription = asks descriptionHTML >>=  return . fmap cleanupText . flip scrapeStringLike (text descriptionSelector)
     where descriptionSelector =  "div" @: ["id" @= "ds_div"]
+
+-- | Scrapes item location from the Ebay Listing webpage html.
+scrapeItemLocation :: Reader ListingData (Maybe BSL.ByteString)
+scrapeItemLocation = asks listingHTML >>= return . fmap (BSL.drop 14 . cleanupText) . flip scrapeStringLike (text itemLocSelector)
+  where itemLocSelector = "div" @: ["id" @= "itemLocation"] :: Selector
+
 
