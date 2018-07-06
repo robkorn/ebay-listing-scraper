@@ -30,7 +30,8 @@ data EbListing = EbListing { title :: Maybe BSL.ByteString,
                              listingID :: BSL.ByteString,
                              timeLeft :: Maybe BSL.ByteString,
                              isCAD :: Bool,
-                             isAuction :: Bool
+                             isAuction :: Bool,
+                             locale :: SiteLocale
                            } deriving (Show)
 
 -- | Contains intermediary data used for the environment for Reader.
@@ -41,6 +42,9 @@ data ListingData = ListingData { url :: URL,
                                  shippingHTML :: BSL.ByteString,
                                  descriptionHTML :: BSL.ByteString
                                } deriving (Show)
+
+-- | Type describing the locale of the listing.
+data SiteLocale = US | Canada | Other deriving Show
 
 
 -- | Creates an 'EbListing' with provided 'ZipCode'(for shipping prices) and with listing 'URL'
@@ -75,6 +79,7 @@ buildEbListing = do
   timeLeft <- scrapeTimeLeft
   isCAD <- isCADListing
   isAuction <- isAuctionCheck
+  curLocale <- determineSiteLocale
   return EbListing { title = title,
                      image = image,
                      note = note,
@@ -88,10 +93,21 @@ buildEbListing = do
                      listingID = lID,
                      timeLeft = timeLeft,
                      isCAD = isCAD,
-                     isAuction = isAuction
+                     isAuction = isAuction,
+                     locale = curLocale
                      }
 
 
+
+-- | Determines site locale.
+determineSiteLocale :: Reader ListingData SiteLocale
+determineSiteLocale = do
+  u <- asks url
+  case null (BSLS.indices ".ca" u) of
+    False -> pure Canada
+    True -> case null (BSLS.indices ".com" u) of
+      False -> pure US
+      True -> pure Other
 
 -- | Creates the 'URL' used to obtain accurate shipping rates for the given ebay domain.
 buildShippingURL :: ZipCode -> URL -> ListingID -> URL
