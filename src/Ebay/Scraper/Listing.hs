@@ -38,12 +38,13 @@ data EbListing = EbListing { title :: Maybe BSL.ByteString,
 data ListingData = ListingData { url :: URL,
                                  lID :: ListingID,
                                  zipCode :: ZipCode,
+                                 lLocale :: SiteLocale,
                                  listingHTML :: BSL.ByteString,
                                  shippingHTML :: BSL.ByteString,
                                  descriptionHTML :: BSL.ByteString
                                } deriving (Show)
 
--- | Type describing the locale of the listing.
+-- | Type describing the locale of the ebay url.
 data SiteLocale = US | Canada | Other deriving Show
 
 
@@ -57,6 +58,7 @@ createEbListing zipCode url = do
   let lData = ListingData { url = url,
                             lID = lID,
                             zipCode = zipCode,
+                            lLocale = determineSiteLocale url,
                             listingHTML = listingHTML,
                             descriptionHTML = descriptionHTML,
                             shippingHTML = cleanupText $ BSL.drop 48 $ shippingHTML}
@@ -79,7 +81,7 @@ buildEbListing = do
   timeLeft <- scrapeTimeLeft
   isCAD <- isCADListing
   isAuction <- isAuctionCheck
-  curLocale <- determineSiteLocale
+  curLocale <- asks lLocale
   return EbListing { title = title,
                      image = image,
                      note = note,
@@ -98,16 +100,14 @@ buildEbListing = do
                      }
 
 
-
 -- | Determines site locale.
-determineSiteLocale :: Reader ListingData SiteLocale
-determineSiteLocale = do
-  u <- asks url
+determineSiteLocale :: URL -> SiteLocale
+determineSiteLocale u = do
   case null (BSLS.indices ".ca" u) of
-    False -> pure Canada
+    False -> Canada
     True -> case null (BSLS.indices ".com" u) of
-      False -> pure US
-      True -> pure Other
+      False -> US
+      True -> Other
 
 -- | Creates the 'URL' used to obtain accurate shipping rates for the given ebay domain.
 buildShippingURL :: ZipCode -> URL -> ListingID -> URL
